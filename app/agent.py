@@ -21,9 +21,9 @@ from pathlib import Path
 from contextlib import nullcontext
 from time import perf_counter
 
+from fastmcp import Client
 from pydantic_ai import Agent
 from pydantic_ai.exceptions import ModelHTTPError
-from fastmcp import Client
 from pydantic_ai.mcp import MCPToolset, StdioTransport
 from pydantic_ai.messages import ToolCallPart, ToolReturnPart
 from pydantic_ai.models.google import GoogleModel
@@ -79,9 +79,9 @@ FULL_CONTEXT_PROMPT = "<資料>\n{materials}\n</資料>\n\n質問: {question}"
 
 # モデルは実行時に渡す（テストではAPIを呼ばない TestModel に差し替えるため）
 agent = Agent(instructions=INSTRUCTIONS)
-agent.tool_plain(tools.search_materials)
-
-# TODO(第3回 演習): tools.py に make_quiz を作り、ここで登録しよう
+agent.tool_plain(tools.search_glossary)
+agent.tool_plain(tools.get_lecture_summary)
+agent.tool_plain(tools.make_quiz)
 
 # 第5回: 使う MCP サーバーの設定ファイル。Claude Desktop や Cursor と同じ "mcpServers" 形式
 MCP_CONFIG = Path(__file__).resolve().parent / "mcp_servers.json"
@@ -99,14 +99,17 @@ def load_mcp_servers(config_path: Path = MCP_CONFIG) -> list[MCPToolset]:
     古い SDK で作られたサーバー（fetch など）につなぐとき、接続方式の自動判定（"auto"）が
     警告を大量に出すため。"legacy" に固定すると新旧どちらのサーバーにも静かにつながる。
     """
-    config = json.loads(Path(config_path).read_text(encoding="utf-8"))["mcpServers"]
+    config = json.loads(Path(config_path).read_text(
+        encoding="utf-8"))["mcpServers"]
     toolsets = []
     for name, spec in config.items():
         if "url" in spec:
             transport = spec["url"]
         else:
-            transport = StdioTransport(spec["command"], spec.get("args", []), env=spec.get("env"))
-        toolsets.append(MCPToolset(Client(transport, mode="legacy")).prefixed(name))
+            transport = StdioTransport(
+                spec["command"], spec.get("args", []), env=spec.get("env"))
+        toolsets.append(MCPToolset(
+            Client(transport, mode="legacy")).prefixed(name))
     return toolsets
 
 
@@ -145,44 +148,19 @@ def print_trace(result, elapsed_seconds: float | None = None) -> None:
             if isinstance(part, ToolCallPart):
                 print(f"[tool call]   {part.tool_name}({part.args})")
             elif isinstance(part, ToolReturnPart):
-                if part.tool_name == "browse_tree":
-                    data = json.loads(part.content)
-                    if "error" in data:
-                        print(f"[tool return] {part.tool_name} -> {data['error']}")
-                    else:
-                        node = data["node"]
-                        path = paths.get(node["id"], [node["title"]])
-                        print(f"[目次を開く] {' → '.join(path)}")
-                        if data["children"]:
-                            print("  直下の候補（ページは先頭文のみ）:")
-                        for child in data["children"]:
-                            paths[child["id"]] = path + [child["title"]]
-                            page = f"PDF p.{child['page']} · " if "page" in child else ""
-                            print(f"    - {child['id']} · {page}{child['title']}")
-                            if "content" in child:
-                                print(f"      {child['content']}")
-                        if not data["children"]:
-                            print(f"    （末端ページ・本文{len(node.get('content', ''))}文字を取得）")
-                else:
-                    print(f"[tool return] {part.tool_name} -> {str(part.content)[:120]}…")
-    usage = result.usage
-    if elapsed_seconds is not None:
-        print(f"[time] 回答完了まで {elapsed_seconds:.2f} 秒（検索・埋め込みを含む）")
-    print(f"[usage] 入力 {usage.input_tokens:,} tokens / 出力 {usage.output_tokens:,} tokens / モデル応答 {usage.requests} 回")
-    cost = f"${usage.cost:.6f} USD" if usage.cost is not None else "算定不可"
-    print(f"[cost] 生成APIの推定コスト: {cost}（埋め込み・索引構築分は含まない）")
+                print(
+                    f"[tool return] {part.tool_name} -> {str(part.content)[:120]}…")
+    print(f"[usage] {result.usage}")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="学習支援エージェントに質問する")
     parser.add_argument("question", nargs="?")
     parser.add_argument("--trace", action="store_true", help="ツール呼び出しを表示する")
-    modes = parser.add_mutually_exclusive_group()
-    modes.add_argument("--mcp", action="store_true", help="第5回: ツールを MCP サーバー（app/mcp_servers.json）から受け取る")
-    modes.add_argument("--graph", action="store_true", help="検索結果からグラフをたどり、候補ページを読んで答える")
-    modes.add_argument("--tree", action="store_true", help="目次をたどり、必要なページを読んで答える")
-    modes.add_argument("--full-context", action="store_true", help="検索せず、lectures.jsonの全資料を一度に渡す")
-    parser.add_argument("--list-tools", action="store_true", help="モデルに見えるツール一覧を表示して終了する（APIキー不要）")
+    parser.add_argument("--mcp", action="store_true",
+                        help="第5回: ツールを MCP サーバー（app/mcp_servers.json）から受け取る")
+    parser.add_argument("--list-tools", action="store_true",
+                        help="モデルに見えるツール一覧を表示して終了する（APIキー不要）")
     args = parser.parse_args()
 
     target = build_mcp_agent() if args.mcp else agent
