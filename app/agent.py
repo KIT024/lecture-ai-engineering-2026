@@ -16,9 +16,9 @@ import inspect
 import json
 from pathlib import Path
 
+from fastmcp import Client
 from pydantic_ai import Agent
 from pydantic_ai.exceptions import ModelHTTPError
-from fastmcp import Client
 from pydantic_ai.mcp import MCPToolset, StdioTransport
 from pydantic_ai.messages import ToolCallPart, ToolReturnPart
 from pydantic_ai.models.google import GoogleModel
@@ -59,14 +59,17 @@ def load_mcp_servers(config_path: Path = MCP_CONFIG) -> list[MCPToolset]:
     古い SDK で作られたサーバー（fetch など）につなぐとき、接続方式の自動判定（"auto"）が
     警告を大量に出すため。"legacy" に固定すると新旧どちらのサーバーにも静かにつながる。
     """
-    config = json.loads(Path(config_path).read_text(encoding="utf-8"))["mcpServers"]
+    config = json.loads(Path(config_path).read_text(
+        encoding="utf-8"))["mcpServers"]
     toolsets = []
     for name, spec in config.items():
         if "url" in spec:
             transport = spec["url"]
         else:
-            transport = StdioTransport(spec["command"], spec.get("args", []), env=spec.get("env"))
-        toolsets.append(MCPToolset(Client(transport, mode="legacy")).prefixed(name))
+            transport = StdioTransport(
+                spec["command"], spec.get("args", []), env=spec.get("env"))
+        toolsets.append(MCPToolset(
+            Client(transport, mode="legacy")).prefixed(name))
     return toolsets
 
 
@@ -104,7 +107,8 @@ def print_trace(result) -> None:
             if isinstance(part, ToolCallPart):
                 print(f"[tool call]   {part.tool_name}({part.args})")
             elif isinstance(part, ToolReturnPart):
-                print(f"[tool return] {part.tool_name} -> {str(part.content)[:120]}…")
+                print(
+                    f"[tool return] {part.tool_name} -> {str(part.content)[:120]}…")
     print(f"[usage] {result.usage}")
 
 
@@ -112,8 +116,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="学習支援エージェントに質問する")
     parser.add_argument("question", nargs="?")
     parser.add_argument("--trace", action="store_true", help="ツール呼び出しを表示する")
-    parser.add_argument("--mcp", action="store_true", help="第5回: ツールを MCP サーバー（app/mcp_servers.json）から受け取る")
-    parser.add_argument("--list-tools", action="store_true", help="モデルに見えるツール一覧を表示して終了する（APIキー不要）")
+    parser.add_argument("--mcp", action="store_true",
+                        help="第5回: ツールを MCP サーバー（app/mcp_servers.json）から受け取る")
+    parser.add_argument("--list-tools", action="store_true",
+                        help="モデルに見えるツール一覧を表示して終了する（APIキー不要）")
     args = parser.parse_args()
 
     target = build_mcp_agent() if args.mcp else agent

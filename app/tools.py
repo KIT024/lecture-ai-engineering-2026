@@ -83,6 +83,8 @@ def get_lecture_summary(lecture: int) -> str:
 
 def make_quiz(lecture: int) -> str:
     """指定した回の用語集から確認問題を1問作成する。
+    複数の用語について質問された場合は、
+    必要に応じてqueryに複数用語をまとめて指定する。
 
     「第2回の確認問題を出して」のように、
     講義内容を復習するための問題を求められたときに使う。
